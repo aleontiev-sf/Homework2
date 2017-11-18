@@ -1,0 +1,130 @@
+Sub calc_annual_stat()
+' This macro scans rows of data for daily stock information (ticker, date, open, high, low, close, volume in columns A-G)
+' and produces a summary table in columns I-L containing ticker, total annual stock volume, total annual price change in dollars
+' and in percentage terms.
+' The macro also produces a list of three stocks in columns O-Q: the one with the highest annual percentage increse,
+' the one the highest annual percenage decrease and the one with the highest total annual volume.
+' The macro itaerates over all the worksheets in a given workbook, producing the results described above.
+' The macro prints a message indicating the name of the worksheet being processed. It also generates a warning message when
+' certain conditions occur, such as stock prices being 0 (the checks are there to avoid overflow errors resulted from
+' division by zero when calcualting percentages).
+' Input data are assumed to:
+'   1. Be presented in a contiguous set of rows without gaps; i.e., there are no empty rows in data
+'   2. Be grouped by individual stocks; i.e., effectively sortedd by stock ticker symbol.
+'   3. Be grouped by year in each worksheet; i.e., each worksheet contains data for only one year.
+' It is also assumed that the worksheet contains at least one row of data.
+    
+    Dim ticker1 As String 'variable to keep track of the ticker for the current stock
+    Dim ticker2 As String 'variable to keep track of the ticker for the stock in next row
+    Dim i As Double 'the current row number in the summary table
+    Dim j As Double 'the row number in input data while processing a single stock
+    Dim volume As Double 'variable used to calculate total annual volume for a given stock
+    Dim price1 As Double 'variable to track the opening price for a given stock (typically at the beginning of the year)
+    Dim price2 As Double 'variable to track the closing price for a given stock (last closing price of a given stock)
+    Dim great_perc_inc As Double 'variable to track the amount of greatest percentage of annual stock price increase
+    Dim great_perc_dec As Double 'variable to track the amount of greatest percentage of annual stock price decrease
+    Dim highest_vol As Double 'variable to track the highest annual volume
+    Dim ticker_highest_vol As String 'variable to track the ticker symbol for the stock with the highest annual volume
+    Dim ticker_great_inc As String 'variable to track the ticker symbol for the stock with the highest annual percentage increase in price
+    Dim ticker_great_dec As String 'variable to track the ticker symbol for the stock with the highest annual percentage decrease in price
+    Dim ws As Worksheet 'variable to track the current worksheet in the active workbook
+    
+  'Start iterating through all the worksheets in the workbook
+  For Each ws In Worksheets
+    MsgBox ("Processing " & ws.Name) 'print the name of the worksheet being processed
+    ticker1 = ws.Cells(2, 1).Value 'capture the ticker symbol for the first stock in the worksheet (it's in row 2)
+    ticker2 = ticker1 'assign current ticker to the variable which tracks the next stock so that we'll iterate at least once through the for loop below
+    i = 2 'set the row index for the summary table to 2 (summary table starts in row 2)
+    j = 2 'also set the row index for input data to 2 (input data also start in row 2)
+    'Initialize all variables which track highest volume, percentage increase/decrease to 0
+    great_perc_inc = 0
+    great_perc_dec = 0
+    highest_vol = 0
+    'Clear the range of cells which will contain summary data
+    ws.Range("I1:P4000").Clear
+    'Insert description (headers) for various columns in the summary table (in columns I-L)
+    ws.Range("i1").Value = "Ticker"
+    ws.Range("j1").Value = "Yearly Change"
+    ws.Range("k1").Value = "Percent Change"
+    ws.Range("l1").Value = "Total Stock Volume"
+    'Insert description/headers for the area which will contain the highest volume and greatest percent increase/decreas (O1:Q3)
+    ws.Range("o1").Value = "Ticker"
+    ws.Range("p1").Value = "Value"
+    ws.Range("n2") = "Greatest % increase"
+    ws.Range("n3") = "Greatest % decrease"
+    ws.Range("n4") = "Greatest Total Volume"
+
+    While Len(ticker2) > 0 'while there are more input data, do the following:
+        price1 = ws.Cells(j, 3).Value 'capture the opening price for the current stock (this can be 0; there's logic to deal with this condition below)
+        ws.Cells(i, 9).Value = ticker1 'insert ticker for the current stock in the summary table
+        volume = 0 'reset the variable for stock volume to 0 since we're starting to process a new stock
+        While ticker1 = ticker2 'for as long as ticker for the current and next rows in input data are the same, do the following
+            volume = ws.Cells(j, 7).Value + volume 'increase volume by the amount of daily volume in the current row
+            If price1 = 0 Then price1 = ws.Cells(j, 3).Value 'Check to see if the opening price is 0 and update it to avoid divide by 0 condition
+            j = j + 1 'increment the row number in input data to point to the next row
+            ticker2 = ws.Cells(j, 1).Value 'update the value of the variable which tracks ticker for the next stock in input data
+        Wend ' we exit the loop once all the entries in input data for a given stock have been processed
+        'Once one stock is processed, update the summary table entries for it AND check to see if highest total volume
+        '   and percent increase/decrease need to be updated
+        ws.Cells(i, 12).Value = volume 'insert total annual volume in the summary table
+        ws.Cells(i, 12).NumberFormat = "#,##0" 'change the format of this cell for better readability (similar to "Accounting" format in Excel)
+        If volume > highest_vol Then ' check to see if the volume of current stock is greater than what has been captured so far as the highest annual volume
+            highest_vol = volume 'if so, update the variable which tracks the value of the highest annual volume
+            ticker_highest_vol = ticker1 'and its corresponding ticker
+        End If 'Note that if there is a tie for the highest total volume, the ticker is not updated; i.e., the first stock is reported
+        'Now calculate the annual increase in stock price both in absolute value and as a percentage (relative to the opening price)
+        price2 = ws.Cells((j - 1), 6).Value 'capture the closing price
+        ws.Cells(i, 10).Value = price2 - price1
+        'Care has to be taken to avoid divide by 0 error since input data can contain all 0s for a given stock;e.g., PLNT in 2014 and 2016, DATA in 2013
+        If price1 > 0 Then 'Check for the opening price not being 0 to avoid an overflow error
+            ws.Cells(i, 11).Value = (price2 - price1) / price1
+        Else 'when the opening price is 0, print an advisory and set percentage change to 0
+            MsgBox ("0 Price detected for " & ticker1 & ". Recording percent change as 0.")
+            ws.Cells(i, 11).Value = 0 'set percentage change to 0 when
+        End If
+        ws.Cells(i, 11).NumberFormat = "0.00%" 'change the format of this cell to display its contents as a percentage (similar to "Percentage" in Excel)
+        'The following conditional statement changes the inerior color to green for positive and red for negative percent change
+        'Also check to see the variables for highest percent increase/decrease need to be updated
+        '   Note: if percent change is exactly 0 the interior color does not change; i.e., stays blank (no fill)
+        If ws.Cells(i, 11).Value > 0 Then
+            ws.Cells(i, 11).Interior.ColorIndex = 4 'change interior color to green for positive percentage change
+            'Check to see if the max percent increase/decrease variables need to be updated
+            '  Note: if there is a tie for max percentage increase/decrease, do nothing; this is similar to how a tie is treated for highest volume
+            If ws.Cells(i, 11).Value > great_perc_inc Then
+                great_perc_inc = ws.Cells(i, 11).Value
+                ticker_great_inc = ticker1
+            End If
+        ElseIf ws.Cells(i, 11).Value < 0 Then
+            ws.Cells(i, 11).Interior.ColorIndex = 3 'change interior color to red for negative percentage change
+            If ws.Cells(i, 11).Value < great_perc_dec Then
+                great_perc_dec = ws.Cells(i, 11).Value
+                ticker_great_dec = ticker1
+            End If
+        End If
+        i = i + 1 'increment the row index to point to the next row in input data
+        ticker1 = ticker2 'update the current ticker to the next ticker
+    Wend 'We exist this loop once all input data have been processed
+    
+    'Now that all data in the current worksheet have been processed, update the three entries for the highest volume
+    '   and highest percentage increase/decrease in the current worksheet (data in O1:Q3)
+    ws.Range("o2").Value = ticker_great_inc
+    ws.Range("p2").Value = great_perc_inc
+    ws.Range("p2").NumberFormat = "0.00%"
+    
+    ws.Range("o3").Value = ticker_great_dec
+    ws.Range("p3").Value = great_perc_dec
+    ws.Range("p3").NumberFormat = "0.00%"
+    
+    ws.Range("o4").Value = ticker_highest_vol
+    ws.Range("p4").Value = highest_vol
+    ws.Range("p4").NumberFormat = "#,##0"
+    'Apply auto-fit formatting to all summary data so column widths are adjusted (to improve readability)
+    ws.Columns("I:I").Columns.AutoFit
+    ws.Columns("J:J").Columns.AutoFit
+    ws.Columns("K:K").Columns.AutoFit
+    ws.Columns("L:L").Columns.AutoFit
+    ws.Columns("N:N").Columns.AutoFit
+    ws.Columns("O:O").Columns.AutoFit
+    ws.Columns("P:P").Columns.AutoFit
+  Next 'move to the next worksheet
+End Sub
